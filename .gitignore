@@ -1,0 +1,20 @@
+# Ignore everything.
+**
+
+# But include these files...
+!.gitignore
+!LICENSE
+!README.md
+
+# ... and these files under the 'metadata' directory...
+!metadata/
+metadata/*
+!metadata/.dockerignore
+!metadata/Dockerfile-dev
+!metadata/Dockerfile-prod
+!metadata/package.json
+!metadata/package-lock.json
+# ... and these directories...
+!metadata/src
+metadata/src/*
+!metadata/src/index.js
