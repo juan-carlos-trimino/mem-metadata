@@ -10,18 +10,57 @@ const mongodb = require('mongodb');
 const mongodbClient = require('mongodb').MongoClient;
 const amqp = require('amqplib');
 const bodyParser = require('body-parser');
+const { randomUUID } = require('crypto');
+const winston = require('winston');
 
 /******
 Globals
 ******/
 //Create a new express instance.
 const app = express();
+const SVC_NAME = "metadata";
 const DB_NAME = process.env.DB_NAME;
 const SVC_DNS_DB = process.env.SVC_DNS_DB;
 const SVC_DNS_RABBITMQ = process.env.SVC_DNS_RABBITMQ;
 const PORT = process.env.PORT && parseInt(process.env.PORT) || 3000;
 const MAX_RETRIES = process.env.MAX_RETRIES && parseInt(process.env.MAX_RETRIES) || 10;
 let READINESS_PROBE = false;
+
+/***
+Resume Operation
+----------------
+The resume operation strategy intercepts unexpected errors and responds by allowing the process to
+continue.
+***/
+process.on('uncaughtException',
+err => {
+  logger.error(`${SVC_NAME} - Uncaught exception.`);
+  logger.error(err && err.stack || err);
+})
+
+/***
+Abort and Restart
+-----------------
+***/
+// process.on("uncaughtException",
+// err => {
+//   console.error("Uncaught exception:");
+//   console.error(err && err.stack || err);
+//   process.exit(1);
+// })
+
+//Winston requires at least one transport (location to save the log) to create a log.
+const logConfiguration = {
+  transports: [ new winston.transports.Console() ],
+  format: winston.format.combine(
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSSSS' }),
+    winston.format.printf(msg => `${msg.timestamp} ${msg.level} ${msg.message}`)
+  ),
+  exitOnError: false
+}
+
+//Create a logger and pass it the Winston configuration object.
+const logger = winston.createLogger(logConfiguration);
 
 /***
 Unlike most other programming languages or runtime environments, Node.js doesn't have a built-in
@@ -32,129 +71,102 @@ Accessing the main module
 When a file is run directly from Node.js, require.main is set to its module. That means that it is
 possible to determine whether a file has been run directly by testing require.main === module.
 ***/
-if (require.main === module)
-{
+if (require.main === module) {
   //Only start the microservice normally if this script is the "main" module.
   main()
-  .then(() =>
-  {
+  .then(() => {
     READINESS_PROBE = true;
-    console.log(`Microservice "metadata" is listening on port "${PORT}"!`);
+    logger.info(`${SVC_NAME} - Microservice is listening on port "${PORT}"!`);
   })
-  .catch(err =>
-  {
-    console.error('Microservice "metadata" failed to start.');
-    console.error(err && err.stack || err);
+  .catch(err => {
+    logger.error(`${SVC_NAME} - Microservice failed to start.`);
+    logger.error(err && err.stack || err);
   });
 }
-else
-{
+else {
   //Otherwise, running under test.
   //Will not workas is!!! jct
   module.exports = { startMicroservice }
 }
 
-function main()
-{
+function main() {
   //Throw exception if any required environment variables are missing.
-  if (process.env.SVC_DNS_DB === undefined)
-  {
+  if (process.env.SVC_DNS_DB === undefined) {
     throw new Error('Please specify the service DNS for the database in the environment variable SVC_DNS_DB.');
   }
-  else if (process.env.DB_NAME === undefined)
-  {
+  else if (process.env.DB_NAME === undefined) {
     throw new Error('Please specify the name of the database in the environment variable DB_NAME.');
   }
-  else if (process.env.SVC_DNS_RABBITMQ === undefined)
-  {
+  else if (process.env.SVC_DNS_RABBITMQ === undefined) {
     throw new Error('Please specify the name of the service DNS for RabbitMQ in the environment variable SVC_DNS_RABBITMQ.');
   }
   //Display a message if any optional environment variables are missing.
-  else
-  {
-    if (process.env.PORT === undefined)
-    {
-      console.log(`The environment variable PORT for the HTTP server is missing; using port ${PORT}.`);
+  else {
+    if (process.env.PORT === undefined) {
+      logger.info(`${SVC_NAME} - The environment variable PORT for the HTTP server is missing; using port ${PORT}.`);
     }
     //
-    if (process.env.MAX_RETRIES === undefined)
-    {
-      console.log(`The environment variable MAX_RETRIES is missing; using MAX_RETRIES=${MAX_RETRIES}.`);
+    if (process.env.MAX_RETRIES === undefined) {
+      logger.info(`${SVC_NAME} - The environment variable MAX_RETRIES is missing; using MAX_RETRIES=${MAX_RETRIES}.`);
     }
   }
   return requestWithRetry(connectToDb, SVC_DNS_DB, MAX_RETRIES)  //Connect to the database...
-  .then(dbConn =>                                                //then...
-  {
+  .then(dbConn => {                                              //then...
     return requestWithRetry(connectToRabbitMQ, SVC_DNS_RABBITMQ, MAX_RETRIES)  //connect to RabbitMQ...
-    .then(conn =>
-    {
+    .then(conn => {
       //Create a RabbitMQ messaging channel.
       return conn.createChannel();
     })
-    .then(channel =>                            //then...
-    {
+    .then(channel => {                          //then...
       return startHttpServer(dbConn, channel);  //start the HTTP server.
     });
   });
 }
 
 //Connect to the database.
-function connectToDb(url, currentRetry)
-{
-  console.log(`Connecting (${currentRetry}) to 'MongoDB' at ${url}/database(${DB_NAME}).`);
+function connectToDb(url, currentRetry) {
+  logger.info(`${SVC_NAME} - Connecting (${currentRetry}) to 'MongoDB' at ${url}/database(${DB_NAME}).`);
   return mongodbClient
   .connect(url, { useUnifiedTopology: true })
-  .then(client =>
-  {
+  .then(client => {
     const db = client.db(DB_NAME);
-    console.log(`Connected to mongodb database '${DB_NAME}'.`);
+    logger.info(`${SVC_NAME} - Connected to mongodb database '${DB_NAME}'.`);
     //Return an object that represents the database connection.
-    return(
-    {
+    return({
       db: db,             //To access the database...
-      close: () =>        //and later close the connection to it.
-      {
+      close: () => {      //and later close the connection to it.
         return client.close();
       }
     });
   });
 }
 
-function connectToRabbitMQ(url, currentRetry)
-{
-  console.log(`Connecting (${currentRetry}) to 'RabbitMQ' at ${url}.`);
+function connectToRabbitMQ(url, currentRetry) {
+  logger.info(`${SVC_NAME} - Connecting (${currentRetry}) to 'RabbitMQ' at ${url}.`);
   return amqp.connect(url)
-  .then(conn =>
-  {
-    console.log("Connected to RabbitMQ.");
+  .then(conn => {
+    logger.info(`${SVC_NAME} - Connected to RabbitMQ.`);
     return conn;
   });
 }
 
-function requestWithRetry(func, url, maxRetry, currentRetry = 1)
-{
+function requestWithRetry(func, url, maxRetry, currentRetry = 1) {
   return new Promise(
-  (resolve, reject) =>
-  {
+  (resolve, reject) => {
     //Guaranteed to execute at least once.
     func(url, currentRetry)
-    .then(res =>
-    {
+    .then(res => {
       resolve(res);
     })
-    .catch(err =>
-    {
+    .catch(err => {
       const timeout = (Math.pow(2, currentRetry) - 1) * 100;
-      console.log(err);
-      if (++currentRetry > maxRetry)
-      {
+      logger.info(`${SVC_NAME} - ${err}`);
+      if (++currentRetry > maxRetry) {
         reject(`Maximum number of ${maxRetry} retries has been reached.`);
       }
-      else
-      {
-        console.log(`Waiting ${timeout}ms...`);
-        setTimeout(() =>
-        {
+      else {
+        logger.info(`${SVC_NAME} - Waiting ${timeout}ms...`);
+        setTimeout(() => {
           requestWithRetry(func, url, maxRetry, currentRetry)
           .then(res => resolve(res))
           .catch(err => reject(err));
@@ -168,31 +180,24 @@ function requestWithRetry(func, url, maxRetry, currentRetry = 1)
 function startHttpServer(dbConn, channel)
 {
   //Notify when server has started.
-  return new Promise(resolve =>
-  {
+  return new Promise(resolve => {
     //Create an object to represent a microservice.
-    const microservice =
-    {
+    const microservice = {
       db: dbConn.db,
       channel: channel
     };
     app.use(bodyParser.json());  //Enable JSON body for HTTP requests.
     setupHandlers(microservice);
     const server = app.listen(PORT,
-    () =>
-    {
+    () => {
       //Create a function that can be used to close the server and database.
-      microservice.close = () =>
-      {
-        return new Promise(resolve =>
-        {
-          server.close(() =>
-          {
+      microservice.close = () => {
+        return new Promise(resolve => {
+          server.close(() => {
             resolve();  //Close the Express server.
           });
         })
-        .then(() =>
-        {
+        .then(() => {
           return dbConn.close();  //Close the database.
         });
       };
@@ -202,83 +207,71 @@ function startHttpServer(dbConn, channel)
 }
 
 //Define the HTTP route handlers here.
-function setupHandlers(microservice)
-{
+function setupHandlers(microservice) {
   //Readiness probe.
   app.get('/readiness',
-  (req, res) =>
-  {
+  (req, res) => {
     res.sendStatus(READINESS_PROBE === true ? 200 : 500);
   });
   //
   const videosCollection = microservice.db.collection("videos");
   //HTTP GET API to retrieve list of videos from the database.
   app.get("/videos",
-  (req, res) =>
-  {
+  (req, res) => {
     //Await the result in the test.
     return videosCollection.find()
     .toArray()  //In a real application this should be paginated.
-    .then(videos =>
-    {
+    .then(videos => {
       res.json({ videos: videos });
     })
-    .catch(err =>
-    {
-      console.error("Failed to get videos collection from database!");
-      console.error(err && err.stack || err);
+    .catch(err => {
+      logger.error("Failed to get videos collection from database!");
+      logger.error(err && err.stack || err);
       res.sendStatus(500);
     });
   });
   //
   //HTTP GET API to retreive details for a particular video.
   app.get("/video",
-  (req, res) =>
-  {
-    const videoId = req.query.id;//new mongodb.ObjectId(req.query.id);
-    console.log(`Searching in the "videos" collection for video ${videoId}`);
+  (req, res) => {
+    const cid = req.headers['X-Correlation-Id'];
+    const videoId = req.query.id;
+    logger.info(`${SVC_NAME} ${cid} - Searching in the "videos" collection for video ${videoId}`);
     //Await the result in the test.
     return videosCollection.findOne({ _id: videoId })
-    .then(video =>
-    {
-      if (video === undefined)
-      {
+    .then(video => {
+      if (video === undefined) {
         res.sendStatus(404);  //Video with the requested ID doesn't exist!
       }
-      else
-      {
+      else {
         res.json({ video });
       }
     })
-    .catch(err =>
-    {
-      console.error(`Failed to get video ${videoId}.`);
-      console.error(err);
+    .catch(err => {
+      logger.error(`${SVC_NAME} ${cid} - Failed to get video ${videoId}.`);
+      logger.error(`${SVC_NAME} ${cid} - ${err}`);
       res.sendStatus(500);
     });
   });
   //
   //Function to handle incoming messages.
-  function consumeUploadedMessage(msg)
-  {
+  function consumeUploadedMessage(msg) {
     /***
      Parse the JSON message to a JavaScript object.
      RabbitMQ doesn't natively support JSON. RabbitMQ is actually agnostic about the format for the
      message payload, and from its point of view, a message is just a blob of binary data.
      ***/
     const parsedMsg = JSON.parse(msg.content.toString());
-    const videoMetadata =
-    {
+    const videoMetadata = {
       _id: parsedMsg.video.id,
       name: parsedMsg.video.name
     };
-    console.log(`Received an "uploaded" message: ${videoMetadata._id}-${videoMetadata.name}`);
+    logger.info(`${SVC_NAME} ${cid} - Received an "uploaded" message: ${videoMetadata._id}-${videoMetadata.name}`);
     return videosCollection
     //Record the metadata for the video.
     .insertOne(videoMetadata)
-    .then(() =>
-    {
-      console.log('Acknowledging message was handled.');
+    .then(() => {
+      logger.info(`${SVC_NAME} ${cid} - Acknowledging message was handled.`);
       microservice.channel.ack(msg);  //If there is no error, acknowledge the message.
     });
   };
@@ -333,8 +326,7 @@ function setupHandlers(microservice)
     });
   ***/
   return microservice.channel.assertQueue('uploaded', { exclusive: false })
-  .then(() =>
-  {
+  .then(() => {
     return microservice.channel.consume('uploaded', consumeUploadedMessage);
   })
 }
