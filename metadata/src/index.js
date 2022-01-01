@@ -218,6 +218,7 @@ function setupHandlers(microservice) {
   //HTTP GET API to retrieve list of videos from the database.
   app.get("/videos",
   (req, res) => {
+    const cid = req.headers['X-Correlation-Id'];
     //Await the result in the test.
     return videosCollection.find()
     .toArray()  //In a real application this should be paginated.
@@ -225,7 +226,7 @@ function setupHandlers(microservice) {
       res.json({ videos: videos });
     })
     .catch(err => {
-      logger.error("Failed to get videos collection from database!");
+      logger.error(`${SVC_NAME} ${cid} - Failed to get videos collection from database!`);
       logger.error(err && err.stack || err);
       res.sendStatus(500);
     });
