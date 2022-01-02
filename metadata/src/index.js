@@ -10,7 +10,6 @@ const mongodb = require('mongodb');
 const mongodbClient = require('mongodb').MongoClient;
 const amqp = require('amqplib');
 const bodyParser = require('body-parser');
-const { randomUUID } = require('crypto');
 const winston = require('winston');
 
 /******
@@ -35,7 +34,8 @@ continue.
 process.on('uncaughtException',
 err => {
   logger.error(`${SVC_NAME} - Uncaught exception.`);
-  logger.error(err && err.stack || err);
+  logger.error(`${SVC_NAME} - ${err}`);
+  logger.error(`${SVC_NAME} - ${err.stack}`);
 })
 
 /***
@@ -80,7 +80,8 @@ if (require.main === module) {
   })
   .catch(err => {
     logger.error(`${SVC_NAME} - Microservice failed to start.`);
-    logger.error(err && err.stack || err);
+    logger.error(`${SVC_NAME} - ${err}`);
+    logger.error(`${SVC_NAME} - ${err.stack}`);
   });
 }
 else {
@@ -223,11 +224,12 @@ function setupHandlers(microservice) {
     return videosCollection.find()
     .toArray()  //In a real application this should be paginated.
     .then(videos => {
+      logger.info(`${SVC_NAME} ${cid} - Retrieved the video collection from the database.`);
       res.json({ videos: videos });
     })
     .catch(err => {
-      logger.error(`${SVC_NAME} ${cid} - Failed to get videos collection from database!`);
-      logger.error(err && err.stack || err);
+      logger.error(`${SVC_NAME} ${cid} - Failed to retrieve the video collection from the database.`);
+      logger.error(`${SVC_NAME} ${cid} - ${err}`);
       res.sendStatus(500);
     });
   });
@@ -258,11 +260,12 @@ function setupHandlers(microservice) {
   //Function to handle incoming messages.
   function consumeUploadedMessage(msg) {
     /***
-     Parse the JSON message to a JavaScript object.
-     RabbitMQ doesn't natively support JSON. RabbitMQ is actually agnostic about the format for the
-     message payload, and from its point of view, a message is just a blob of binary data.
-     ***/
+    Parse the JSON message to a JavaScript object.
+    RabbitMQ doesn't natively support JSON. RabbitMQ is actually agnostic about the format for the
+    message payload, and from its point of view, a message is just a blob of binary data.
+    ***/
     const parsedMsg = JSON.parse(msg.content.toString());
+    const cid = parsedMsg.video.cid;
     const videoMetadata = {
       _id: parsedMsg.video.id,
       name: parsedMsg.video.name
