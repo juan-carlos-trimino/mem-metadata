@@ -219,7 +219,12 @@ function setupHandlers(microservice) {
   //HTTP GET API to retrieve list of videos from the database.
   app.get("/videos",
   (req, res) => {
-    const cid = req.headers['x-correlation-id'];
+  /***
+  In the HTTP protocol, headers are case-insensitive; however, the Express framework converts
+  everything to lower case. Unfortunately, for objects in JavaScript, their property names are
+  case-sensitive.
+  ***/
+  const cid = req.headers['x-correlation-id'];
     //Await the result in the test.
     return videosCollection.find()
     .toArray()  //In a real application this should be paginated.
