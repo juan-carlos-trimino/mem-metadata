@@ -219,7 +219,7 @@ function setupHandlers(microservice) {
   //HTTP GET API to retrieve list of videos from the database.
   app.get("/videos",
   (req, res) => {
-    const cid = req.headers['X-Correlation-Id'];
+    const cid = req.headers['x-correlation-id'];
     //Await the result in the test.
     return videosCollection.find()
     .toArray()  //In a real application this should be paginated.
@@ -237,7 +237,7 @@ function setupHandlers(microservice) {
   //HTTP GET API to retreive details for a particular video.
   app.get("/video",
   (req, res) => {
-    const cid = req.headers['X-Correlation-Id'];
+    const cid = req.headers['x-correlation-id'];
     const videoId = req.query.id;
     logger.info(`${SVC_NAME} ${cid} - Searching in the "videos" collection for video ${videoId}`);
     //Await the result in the test.
@@ -270,7 +270,7 @@ function setupHandlers(microservice) {
       _id: parsedMsg.video.id,
       name: parsedMsg.video.name
     };
-    logger.info(`${SVC_NAME} ${cid} - Received an "uploaded" message: ${videoMetadata._id}-${videoMetadata.name}`);
+    logger.info(`${SVC_NAME} ${cid} - Received an "uploaded" message: ${videoMetadata._id}`);
     return videosCollection
     //Record the metadata for the video.
     .insertOne(videoMetadata)
