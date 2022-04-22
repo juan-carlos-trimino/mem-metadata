@@ -11,6 +11,7 @@ const mongodbClient = require('mongodb').MongoClient;
 const amqp = require('amqplib');
 const bodyParser = require('body-parser');
 const winston = require('winston');
+const { randomUUID } = require('crypto');
 
 /******
 Globals
