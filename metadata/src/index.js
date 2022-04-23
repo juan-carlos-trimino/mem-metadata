@@ -266,12 +266,12 @@ function setupHandlers(microservice) {
     return videosCollection.find()
     .toArray()  //In a real application this should be paginated.
     .then(videos => {
-      logger.info(`${SVC_NAME} ${cid} - Retrieved the video collection from the database.`);
+      logger.info(`${SVC_NAME} ${cid} - Retrieved the video collection from the databasexxx.`);
       // res.json({ videos: videos });
       res.render('video-list', { videos: JSON.parse(/*data*/res.json({ videos: videos })).videos });
     })
     .catch(err => {
-      logger.error(`${SVC_NAME} ${cid} - Failed to retrieve the video collection from the database.`);
+      logger.error(`${SVC_NAME} ${cid} - Failed to retrieve the video collection from the databasexxxx.`);
       logger.error(`${SVC_NAME} ${cid} - ${err}`);
       res.sendStatus(500);
     });
