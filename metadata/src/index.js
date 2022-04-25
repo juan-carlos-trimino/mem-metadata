@@ -267,8 +267,12 @@ function setupHandlers(microservice) {
     .toArray()  //In a real application this should be paginated.
     .then(videos => {
       logger.info(`${SVC_NAME} ${cid} - Retrieved the video collection from the databasexxx.`);
-      // res.json({ videos: videos });
-      res.render('video-list', { videos: JSON.parse(/*data*/res.json({ videos: videos })).videos });
+      if (videos === undefined || videos === null || videos.length === 0) {
+        res.render('video-list', { videos: JSON.parse('[]') });
+      }
+      else {
+        res.render('video-list', { videos: JSON.parse(/*data*/res.json({ videos: videos })).videos });
+      }
     })
     .catch(err => {
       logger.error(`${SVC_NAME} ${cid} - Failed to retrieve the video collection from the databasexxxx.`);
