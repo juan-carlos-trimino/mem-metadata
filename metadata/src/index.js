@@ -250,37 +250,6 @@ function startHttpServer(dbConn, channel)
 
 //Define the HTTP route handlers here.
 function setupHandlers(microservice) {
-  //*** REVERSE-PROXY ***
-  //HTTP GET API to retrieve list of videos from the database.
-  app.get("/",
-  (req, res) => {
-    const cid = randomUUID();
-    const ip = getIP(req);
-    logger.info(`${SVC_NAME} ${cid} - Received request from ${ip}: "List the Videos."`);
-    /***
-    In the HTTP protocol, headers are case-insensitive; however, the Express framework converts
-    everything to lower case. Unfortunately, for objects in JavaScript, their property names are
-    case-sensitive.
-    ***/
-    //Await the result in the test.
-    return videosCollection.find()
-    .toArray()  //In a real application this should be paginated.
-    .then(videos => {
-      logger.info(`${SVC_NAME} ${cid} - Retrieved the video collection from the databasexxx.`);
-      if (videos === undefined || videos === null || videos.length === 0) {
-        res.render('video-list', { videos: JSON.parse('[]') });
-      }
-      else {
-        res.render('video-list', { videos: JSON.parse(/*data*/res.json({ videos: videos })).videos });
-      }
-    })
-    .catch(err => {
-      logger.error(`${SVC_NAME} ${cid} - Failed to retrieve the video collection from the databasexxxx.`);
-      logger.error(`${SVC_NAME} ${cid} - ${err}`);
-      res.sendStatus(500);
-    });
-  });
-  //*** REVERSE-PROXY ***
   //Readiness probe.
   app.get('/readiness',
   (req, res) => {
