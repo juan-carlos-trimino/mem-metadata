@@ -35,9 +35,9 @@ continue.
 ***/
 process.on('uncaughtException',
 err => {
-  logger.error('Uncaught exception.', { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
-  logger.error(err, { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
-  logger.error(err.stack, { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
+  logger.error('Uncaught exception.', { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
+  logger.error(err, { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
+  logger.error(err.stack, { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
 })
 
 /***
@@ -53,9 +53,14 @@ Abort and Restart
 
 //Winston requires at least one transport (location to save the log) to create a log.
 const logConfiguration = {
-  transports: [ new winston.transports.Console() ],
+  transports: [
+    new winston.transports.Console()
+  ],
   format: winston.format.combine(
-    winston.format.timestamp(), winston.format.json()
+    winston.format.timestamp({
+      format: 'YYYY-MM-DD hh:mm:ss.SSS'
+    }),
+    winston.format.json()
   ),
   exitOnError: false  //Do not exit on handled exceptions.
 }
@@ -77,12 +82,12 @@ if (require.main === module) {
   main()
   .then(() => {
     READINESS_PROBE = true;
-    logger.info(`Microservice is listening on port ${PORT}!`, { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
+    logger.info(`Microservice is listening on port ${PORT}!`, { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
   })
   .catch(err => {
-    logger.error('Microservice failed to start.', { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
-    logger.error(err, { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
-    logger.error(err.stack, { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
+    logger.error('Microservice failed to start.', { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
+    logger.error(err, { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
+    logger.error(err.stack, { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
   });
 }
 else {
@@ -105,11 +110,11 @@ function main() {
   //Display a message if any optional environment variables are missing.
   else {
     if (process.env.PORT === undefined) {
-      logger.info(`The environment variable PORT for the HTTP server is missing; using port ${PORT}.`, { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
+      logger.info(`The environment variable PORT for the HTTP server is missing; using port ${PORT}.`, { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
     }
     //
     if (process.env.MAX_RETRIES === undefined) {
-      logger.info(`The environment variable MAX_RETRIES is missing; using MAX_RETRIES=${MAX_RETRIES}.`, { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
+      logger.info(`The environment variable MAX_RETRIES is missing; using MAX_RETRIES=${MAX_RETRIES}.`, { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
     }
   }
   return requestWithRetry(connectToDb, SVC_DNS_DB, MAX_RETRIES)  //Connect to the database...
@@ -160,19 +165,19 @@ function getIP(req) {
   }
   catch (err) {
     ip = null;
-    logger.error(err, { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
+    logger.error(err, { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
   }
   return ip;
 }
 
 //Connect to the database.
 function connectToDb(url, currentRetry) {
-  logger.info(`Connecting (${currentRetry}) to MongoDB at ${url}/database(${DB_NAME}).`, { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
+  logger.info(`Connecting (${currentRetry}) to MongoDB at ${url}/database(${DB_NAME}).`, { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
   return mongodbClient
   .connect(url, { useUnifiedTopology: true })
   .then(client => {
     const db = client.db(DB_NAME);
-    logger.info(`Connected to the MongoDB database '${DB_NAME}'.`, { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
+    logger.info(`Connected to the 'MongoDB' database '${DB_NAME}'.`, { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
     //Return an object that represents the database connection.
     return({
       db: db,             //To access the database...
@@ -184,10 +189,10 @@ function connectToDb(url, currentRetry) {
 }
 
 function connectToRabbitMQ(url, currentRetry) {
-  logger.info(`Connecting (${currentRetry}) to RabbitMQ at ${url}.`, { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
+  logger.info(`Connecting (${currentRetry}) to RabbitMQ at ${url}.`, { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
   return amqp.connect(url)
   .then(conn => {
-    logger.info('Connected to RabbitMQ.', { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
+    logger.info('Connected to RabbitMQ.', { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
     return conn;
   });
 }
@@ -202,13 +207,13 @@ function requestWithRetry(func, url, maxRetry, currentRetry = 1) {
     })
     .catch(err => {
       const timeout = (Math.pow(2, currentRetry) - 1) * 100;
-      logger.info(err, { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
+      logger.info(err, { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
       if (++currentRetry > maxRetry) {
-        logger.info(`Maximum number of ${maxRetry} retries has been reached.`, { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
+        logger.info(`Maximum number of ${maxRetry} retries has been reached.`, { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
         reject(`Maximum number of ${maxRetry} retries has been reached.`);
       }
       else {
-        logger.info(`Waiting ${timeout}ms...`, { app:APP_NAME_VER, service:SVC_NAME, msgId:'-1' });
+        logger.info(`Waiting ${timeout}ms...`, { app:APP_NAME_VER, service:SVC_NAME, requestId:'-1' });
         setTimeout(() => {
           requestWithRetry(func, url, maxRetry, currentRetry)
           .then(res => resolve(res))
@@ -271,12 +276,12 @@ function setupHandlers(microservice) {
     return videosCollection.find()
     .toArray()  //In a real application this should be paginated.
     .then(videos => {
-      logger.info('Retrieved the video collection from the database.', { app:APP_NAME_VER, service:SVC_NAME, msgId:cid });
+      logger.info('Retrieved the video collection from the database.', { app:APP_NAME_VER, service:SVC_NAME, requestId:cid });
       res.json({ videos: videos });
     })
     .catch(err => {
-      logger.error('Failed to retrieve the video collection from the database.', { app:APP_NAME_VER, service:SVC_NAME, msgId:cid });
-      logger.error(err, { app:APP_NAME_VER, service:SVC_NAME, msgId:cid });
+      logger.error('Failed to retrieve the video collection from the database.', { app:APP_NAME_VER, service:SVC_NAME, requestId:cid });
+      logger.error(err, { app:APP_NAME_VER, service:SVC_NAME, requestId:cid });
       res.sendStatus(500);
     });
   });
@@ -286,7 +291,7 @@ function setupHandlers(microservice) {
   (req, res) => {
     const cid = req.headers['x-correlation-id'];
     const videoId = req.query.id;
-    logger.info(`Searching in the videos collection for video ${videoId}.`, { app:APP_NAME_VER, service:SVC_NAME, msgId:cid });
+    logger.info(`Searching in the videos collection for video ${videoId}.`, { app:APP_NAME_VER, service:SVC_NAME, requestId:cid });
     //Await the result in the test.
     return videosCollection.findOne({ _id: videoId })
     .then(video => {
@@ -298,8 +303,8 @@ function setupHandlers(microservice) {
       }
     })
     .catch(err => {
-      logger.error(`Failed to get video ${videoId}.`, { app:APP_NAME_VER, service:SVC_NAME, msgId:cid });
-      logger.error(err, { app:APP_NAME_VER, service:SVC_NAME, msgId:cid });
+      logger.error(`Failed to get video ${videoId}.`, { app:APP_NAME_VER, service:SVC_NAME, requestId:cid });
+      logger.error(err, { app:APP_NAME_VER, service:SVC_NAME, requestId:cid });
       res.sendStatus(500);
     });
   });
@@ -317,12 +322,12 @@ function setupHandlers(microservice) {
       _id: parsedMsg.video.id,
       name: parsedMsg.video.name
     };
-    logger.info(`Received an uploaded message: ${videoMetadata._id}.`, { app:APP_NAME_VER, service:SVC_NAME, msgId:cid });
+    logger.info(`Received an uploaded message: ${videoMetadata._id}.`, { app:APP_NAME_VER, service:SVC_NAME, requestId:cid });
     return videosCollection
     //Record the metadata for the video.
     .insertOne(videoMetadata)
     .then(() => {
-      logger.info('Acknowledging message was handled.', { app:APP_NAME_VER, service:SVC_NAME, msgId:cid });
+      logger.info('Acknowledging message was handled.', { app:APP_NAME_VER, service:SVC_NAME, requestId:cid });
       microservice.channel.ack(msg);  //If there is no error, acknowledge the message.
     });
   };
